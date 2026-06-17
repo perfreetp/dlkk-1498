@@ -15,10 +15,109 @@ import {
   Calendar,
   Building,
   ChevronRight,
+  XCircle,
+  AlertTriangle,
+  Building2,
+  AlertCircle,
 } from 'lucide-react';
-import type { CaseInfo, ResultRecord, ResultType } from '@/types';
+import type { CaseInfo, ResultRecord, ResultType, ItemProgressStatus, SelectedItem } from '@/types';
 
 type TabType = 'pending' | 'archived';
+
+const departmentGroups: Record<string, string[]> = {
+  police: ['公安局'],
+  hrss: ['人社局'],
+  medical: ['医保局'],
+  health: ['卫健委'],
+};
+
+const departmentNames: Record<string, string> = {
+  police: '公安',
+  hrss: '人社',
+  medical: '医保',
+  health: '卫健',
+};
+
+const itemStatusConfig: Record<ItemProgressStatus, { label: string; color: string; bgColor: string; icon?: typeof CheckCircle }> = {
+  pending: { label: '待受理', color: 'text-gray-600', bgColor: 'bg-gray-100' },
+  processing: { label: '办理中', color: 'text-primary-600', bgColor: 'bg-primary-50' },
+  completed: { label: '已完成', color: 'text-green-600', bgColor: 'bg-green-50', icon: CheckCircle },
+  overdue: { label: '超期', color: 'text-red-600', bgColor: 'bg-red-50', icon: XCircle },
+  exception: { label: '异常', color: 'text-orange-600', bgColor: 'bg-orange-50', icon: AlertTriangle },
+};
+
+function isOverdue(expectCompleteAt?: string): boolean {
+  if (!expectCompleteAt) return false;
+  const now = new Date();
+  const expectDate = new Date(expectCompleteAt);
+  return now > expectDate;
+}
+
+function resolveItemStatus(item: SelectedItem): ItemProgressStatus {
+  if (item.progressStatus === 'completed') return 'completed';
+  if (item.progressStatus === 'exception') return 'exception';
+  if (item.progressStatus === 'processing') return 'processing';
+  if (item.progressStatus === 'pending') {
+    if (isOverdue(item.expectCompleteAt)) return 'overdue';
+    return 'pending';
+  }
+  if (isOverdue(item.expectCompleteAt)) return 'overdue';
+  return item.progressStatus || 'pending';
+}
+
+function resolveItemProgressStatus(item: SelectedItem, caseStatus?: string): ItemProgressStatus {
+  if (item.progressStatus) {
+    return resolveItemStatus(item);
+  }
+  if (caseStatus === 'completed' || caseStatus === 'archived') {
+    return 'completed';
+  }
+  return 'pending';
+}
+
+function getItemProgress(item: SelectedItem, caseStatus?: string): number {
+  const status = resolveItemProgressStatus(item, caseStatus);
+  if (status === 'completed') return 100;
+  if (status === 'pending') return 0;
+  if (status === 'processing') return 50;
+  if (status === 'overdue') return 80;
+  if (status === 'exception') return 30;
+  return 0;
+}
+
+function getDepartmentKey(department: string): string | null {
+  for (const [key, names] of Object.entries(departmentGroups)) {
+    if (names.includes(department)) return key;
+  }
+  return null;
+}
+
+function ItemStatusBadge({ status }: { status: ItemProgressStatus }) {
+  const config = itemStatusConfig[status];
+  const Icon = config.icon;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${config.bgColor} ${config.color}`}>
+      {Icon && <Icon size={12} />}
+      {config.label}
+    </span>
+  );
+}
+
+function ItemProgressBar({ progress }: { progress: number }) {
+  let barColor = 'bg-gray-300';
+  if (progress >= 100) barColor = 'bg-green-500';
+  else if (progress >= 50) barColor = 'bg-primary-500';
+  else if (progress > 0) barColor = 'bg-yellow-500';
+
+  return (
+    <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+      <div
+        className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+        style={{ width: `${progress}%` }}
+      />
+    </div>
+  );
+}
 
 export default function ArchiveCase() {
   const { id } = useParams<{ id?: string }>();
@@ -26,6 +125,8 @@ export default function ArchiveCase() {
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [selectedCase, setSelectedCase] = useState<CaseInfo | null>(null);
   const [notFoundWarning, setNotFoundWarning] = useState<string | null>(null);
+  const [showArchiveDialog, setShowArchiveDialog] = useState(false);
+  const [archiveCheckResult, setArchiveCheckResult] = useState<{ incompleteCount: number; exceptionCount: number } | null>(null);
 
   const pendingCases = useMemo(() => {
     return cases.filter((c) => c.status === 'completed');
@@ -39,6 +140,67 @@ export default function ArchiveCase() {
     return activeTab === 'pending' ? pendingCases : archivedCases;
   }, [activeTab, pendingCases, archivedCases]);
 
+  const groupedItems = useMemo(() => {
+    if (!selectedCase) return {};
+    const groups: Record<string, SelectedItem[]> = {
+      police: [],
+      hrss: [],
+      medical: [],
+      health: [],
+    };
+    selectedCase.selectedItems.forEach(item => {
+      if (!item.selected) return;
+      const key = getDepartmentKey(item.department);
+      if (key && groups[key]) {
+        groups[key].push(item);
+      }
+    });
+    return groups;
+  }, [selectedCase]);
+
+  const getDepartmentProgress = (items: SelectedItem[]) => {
+    if (items.length === 0) return 0;
+    const completed = items.filter(item => resolveItemProgressStatus(item, selectedCase?.status) === 'completed').length;
+    return Math.round((completed / items.length) * 100);
+  };
+
+  const checkArchiveConditions = () => {
+    if (!selectedCase) return { incompleteCount: 0, exceptionCount: 0, canArchive: true };
+    
+    let incompleteCount = 0;
+    let exceptionCount = 0;
+    
+    selectedCase.selectedItems.forEach(item => {
+      if (!item.selected) return;
+      const status = resolveItemProgressStatus(item, selectedCase.status);
+      if (status !== 'completed') {
+        incompleteCount++;
+      }
+      if (status === 'exception') {
+        exceptionCount++;
+      }
+    });
+    
+    return {
+      incompleteCount,
+      exceptionCount,
+      canArchive: incompleteCount === 0 && exceptionCount === 0,
+    };
+  };
+
+  const processCaseWithProgressStatus = (caseItem: CaseInfo): CaseInfo => {
+    if (caseItem.status !== 'completed' && caseItem.status !== 'archived') {
+      return caseItem;
+    }
+    const updatedItems = caseItem.selectedItems.map(item => {
+      if (!item.progressStatus) {
+        return { ...item, progressStatus: 'completed' as ItemProgressStatus };
+      }
+      return item;
+    });
+    return { ...caseItem, selectedItems: updatedItems };
+  };
+
   useEffect(() => {
     if (!id) return;
 
@@ -49,8 +211,9 @@ export default function ArchiveCase() {
       } else if (targetCase.status === 'archived') {
         setActiveTab('archived');
       }
-      setSelectedCase(targetCase);
-      setCurrentCase(targetCase);
+      const processedCase = processCaseWithProgressStatus(targetCase);
+      setSelectedCase(processedCase);
+      setCurrentCase(processedCase);
       setNotFoundWarning(null);
     } else {
       setNotFoundWarning(`未找到 ID 为 ${id} 的办件`);
@@ -60,11 +223,28 @@ export default function ArchiveCase() {
   }, [id, cases, getCaseById, setCurrentCase]);
 
   const handleCaseClick = (caseItem: CaseInfo) => {
-    setSelectedCase(caseItem);
-    setCurrentCase(caseItem);
+    const processedCase = processCaseWithProgressStatus(caseItem);
+    setSelectedCase(processedCase);
+    setCurrentCase(processedCase);
   };
 
   const handleArchive = () => {
+    if (!selectedCase) return;
+
+    const checkResult = checkArchiveConditions();
+    if (!checkResult.canArchive) {
+      setArchiveCheckResult({
+        incompleteCount: checkResult.incompleteCount,
+        exceptionCount: checkResult.exceptionCount,
+      });
+      setShowArchiveDialog(true);
+      return;
+    }
+
+    executeArchive();
+  };
+
+  const executeArchive = () => {
     if (!selectedCase) return;
 
     addFlowRecord(selectedCase.id, {
@@ -80,11 +260,19 @@ export default function ArchiveCase() {
 
     const latestCase = getCaseById(selectedCase.id);
     if (latestCase) {
-      setSelectedCase(latestCase);
-      setCurrentCase(latestCase);
+      const processedCase = processCaseWithProgressStatus(latestCase);
+      setSelectedCase(processedCase);
+      setCurrentCase(processedCase);
     }
 
     setActiveTab('archived');
+    setShowArchiveDialog(false);
+    setArchiveCheckResult(null);
+  };
+
+  const cancelArchive = () => {
+    setShowArchiveDialog(false);
+    setArchiveCheckResult(null);
   };
 
   const handleResultRegister = (type: ResultType) => {
@@ -342,6 +530,91 @@ export default function ArchiveCase() {
 
               <div className="card p-5">
                 <div className="flex items-center gap-2 mb-4">
+                  <Building2 className="text-primary-500" size={18} />
+                  <h2 className="text-base font-semibold text-gray-800">部门事项办理情况</h2>
+                </div>
+
+                <div className="space-y-4">
+                  {Object.entries(groupedItems).map(([deptKey, items]) => {
+                    if (items.length === 0) return null;
+                    const deptProgress = getDepartmentProgress(items);
+                    const completedCount = items.filter(i => resolveItemProgressStatus(i, selectedCase.status) === 'completed').length;
+
+                    return (
+                      <div key={deptKey} className="border border-gray-100 rounded-lg overflow-hidden">
+                        <div className="p-3 bg-gray-50 border-b border-gray-100">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-7 h-7 rounded bg-primary-50 flex items-center justify-center">
+                                <Building2 size={16} className="text-primary-600" />
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-semibold text-gray-800">
+                                  {departmentNames[deptKey] || deptKey}
+                                </h3>
+                                <p className="text-xs text-gray-400">{items[0]?.department}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <div className="text-xs font-medium text-gray-700">
+                                {completedCount}/{items.length} 已完成
+                              </div>
+                              <div className="w-20 mt-1">
+                                <ItemProgressBar progress={deptProgress} />
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="divide-y divide-gray-50">
+                          {items.map(item => {
+                            const status = resolveItemProgressStatus(item, selectedCase.status);
+                            const overdue = isOverdue(item.expectCompleteAt) && status !== 'completed';
+
+                            return (
+                              <div key={item.id} className="p-3">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <FileText size={13} className="text-gray-400" />
+                                      <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                                    </div>
+                                  </div>
+                                  <ItemStatusBadge status={status} />
+                                </div>
+
+                                <div className="ml-5 space-y-1.5">
+                                  <div className="flex items-center gap-4 text-xs">
+                                    <div className="flex items-center gap-1 text-gray-500">
+                                      <Calendar size={11} />
+                                      <span>受理：{item.acceptAt || '-'}</span>
+                                    </div>
+                                    <div className={`flex items-center gap-1 ${overdue ? 'text-red-600 font-medium' : 'text-gray-500'}`}>
+                                      <Clock size={11} />
+                                      <span>预计：{item.expectCompleteAt || '-'}</span>
+                                      {overdue && <span>（超期）</span>}
+                                    </div>
+                                  </div>
+
+                                  {item.progressRemark && (
+                                    <div className="flex items-start gap-1 text-xs">
+                                      <AlertCircle size={11} className="text-gray-400 mt-0.5 flex-shrink-0" />
+                                      <span className="text-gray-500">{item.progressRemark}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="card p-5">
+                <div className="flex items-center gap-2 mb-4">
                   <FileCheck className="text-primary-500" size={18} />
                   <h2 className="text-base font-semibold text-gray-800">办理结果登记</h2>
                 </div>
@@ -557,6 +830,39 @@ export default function ArchiveCase() {
           )}
         </div>
       </div>
+
+      {showArchiveDialog && archiveCheckResult && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl p-6 w-[420px] max-w-[90vw]">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                <AlertTriangle className="text-orange-500" size={20} />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-gray-800 mb-1">确认归档</h3>
+                <p className="text-sm text-gray-600">
+                  您确认要归档该办件吗？当前还有 <span className="font-semibold text-orange-600">{archiveCheckResult.incompleteCount}</span> 个事项未完成、
+                  <span className="font-semibold text-orange-600">{archiveCheckResult.exceptionCount}</span> 个事项异常。归档后数据将无法修改。
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end mt-6">
+              <button
+                onClick={cancelArchive}
+                className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={executeArchive}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary-500 rounded-lg hover:bg-primary-600 transition-colors"
+              >
+                确认归档
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

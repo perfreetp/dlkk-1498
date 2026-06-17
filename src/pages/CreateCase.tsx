@@ -19,6 +19,7 @@ import {
   ArrowRight,
   ArrowLeft,
 } from 'lucide-react';
+import { StatusBadge } from '@/components/business/StatusBadge';
 import type {
   CaseType,
   ApplicantInfo,
@@ -215,9 +216,11 @@ export default function CreateCase() {
     const base = buildCaseBase();
     const now = getNowStr();
     let targetId: string;
+    let caseNo: string;
 
     if (existingCase) {
       targetId = existingCase.id;
+      caseNo = existingCase.caseNo;
       updateCase(existingCase.id, {
         ...base,
         status: 'verifying',
@@ -232,7 +235,7 @@ export default function CreateCase() {
       setCurrentCase(updated);
     } else {
       targetId = `case-${Date.now()}`;
-      const caseNo = generateCaseNo();
+      caseNo = generateCaseNo();
       const newCase: CaseInfo = {
         id: targetId,
         caseNo,
@@ -255,7 +258,7 @@ export default function CreateCase() {
       setCurrentCase(newCase);
     }
 
-    alert(`草稿已保存，联办单号：${existingCase?.caseNo || (targetId ? generateCaseNo() : '')}`);
+    alert(`草稿已保存，联办单号：${caseNo}`);
     navigate(`/create/${targetId}`, { replace: true });
   };
 
@@ -338,6 +341,24 @@ export default function CreateCase() {
             <h1 className="text-xl font-bold text-gray-800">新建联办单</h1>
             <span className="text-sm text-gray-500">窗口：01号窗</span>
           </div>
+          {existingCase && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FileText size={20} className="text-primary-500" />
+                <span className="text-lg font-bold text-primary-600">
+                  当前联办单号：{existingCase.caseNo}
+                </span>
+              </div>
+              <div className="flex items-center gap-4">
+                <StatusBadge status={existingCase.status} />
+                {existingCase.createdAt && (
+                  <span className="text-sm text-gray-500">
+                    受理时间：{existingCase.createdAt}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex justify-center">
             <Steps steps={steps} current={1} />
           </div>

@@ -257,17 +257,45 @@ export default function SupplementCase() {
       remark: `申请人已提交以下材料：${allSupplementNames}`,
     });
 
-    const hasBeenArranged = submittedSelectedCase.flowRecords.some(
-      (r) => r.status === 'arranging' || r.status === 'processing'
+    const hasAcceptOrArrangeAction = submittedSelectedCase.flowRecords.some(
+      (r) => r.action.includes('受理提交') || r.action.includes('联办编排')
     );
-    const nextStatus: CaseStatus = hasBeenArranged ? 'processing' : 'arranging';
+    const hasProgressItems = submittedSelectedCase.selectedItems.some(
+      (item) => item.progressStatus === 'completed' || item.progressStatus === 'processing'
+    );
+    const nextStatus: CaseStatus = hasAcceptOrArrangeAction || hasProgressItems ? 'processing' : 'arranging';
+
+    const completedItems = submittedSelectedCase.selectedItems.filter(
+      (item) => item.progressStatus === 'completed'
+    );
+    const processingItems = submittedSelectedCase.selectedItems.filter(
+      (item) => item.progressStatus === 'processing'
+    );
+    const pendingItems = submittedSelectedCase.selectedItems.filter(
+      (item) => !item.progressStatus || item.progressStatus === 'pending'
+    );
+
+    const statusLabel = nextStatus === 'processing' ? '办理中' : '编排中';
+    let remark = `材料完整，恢复至【${statusLabel}】环节`;
+    if (completedItems.length > 0) {
+      const completedNames = completedItems.map((i) => i.name).join('、');
+      remark += `，保留${completedNames}已完成状态`;
+    }
+    if (processingItems.length > 0) {
+      const processingNames = processingItems.map((i) => i.name).join('、');
+      remark += `，${processingNames}继续办理`;
+    }
+    if (pendingItems.length > 0 && nextStatus === 'arranging') {
+      const pendingNames = pendingItems.map((i) => i.name).join('、');
+      remark += `，${pendingNames}待编排`;
+    }
 
     addFlowRecord(submittedSelectedCase.id, {
       status: nextStatus,
       operator: currentUser.name,
       department: currentUser.department,
       action: '恢复办理流程',
-      remark: '材料完整，送回办理',
+      remark,
     });
 
     const updatedMaterials = submittedSelectedCase.materials.map((m) => {

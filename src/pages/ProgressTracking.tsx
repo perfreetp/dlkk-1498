@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -11,6 +11,9 @@ import {
   FileText,
   Calendar,
   AlertCircle,
+  X,
+  Edit3,
+  Save,
 } from 'lucide-react';
 import { useCaseStore } from '@/store/useCaseStore';
 import { StatusBadge } from '@/components/business/StatusBadge';
@@ -141,6 +144,12 @@ export default function ProgressTracking() {
   const { id } = useParams<{ id: string }>();
   const { cases, setCurrentCase, currentUser, updateCase, getCaseById, addFlowRecord } = useCaseStore();
 
+  const [editingItem, setEditingItem] = useState<SelectedItem | null>(null);
+  const [editStatus, setEditStatus] = useState<ItemProgressStatus>('pending');
+  const [editExpectDate, setEditExpectDate] = useState('');
+  const [editRemark, setEditRemark] = useState('');
+  const [showModal, setShowModal] = useState(false);
+
   const caseInfo = useMemo(() => {
     if (!id) return undefined;
     return getCaseById(id);
@@ -197,6 +206,44 @@ export default function ProgressTracking() {
     if (items.length === 0) return 0;
     const completed = items.filter(item => resolveItemStatus(item) === 'completed').length;
     return Math.round((completed / items.length) * 100);
+  };
+
+  const statusOptions: { value: ItemProgressStatus; label: string }[] = [
+    { value: 'pending', label: '待受理' },
+    { value: 'processing', label: '办理中' },
+    { value: 'completed', label: '已完成' },
+    { value: 'exception', label: '异常' },
+  ];
+
+  const handleSave = () => {
+    if (!editingItem || !caseInfo) return;
+
+    const statusLabel = statusOptions.find(s => s.value === editStatus)?.label || editStatus;
+
+    const updatedItems = caseInfo.selectedItems.map(item =>
+      item.id === editingItem.id
+        ? {
+            ...item,
+            progressStatus: editStatus,
+            expectCompleteAt: editExpectDate || item.expectCompleteAt,
+            progressRemark: editRemark,
+          }
+        : item
+    );
+
+    updateCase(caseInfo.id, { selectedItems: updatedItems });
+
+    addFlowRecord(caseInfo.id, {
+      action: '事项进度更新',
+      remark: `${editingItem.name}：${statusLabel}，备注：${editRemark || '无'}`,
+      status: 'processing',
+      operator: currentUser?.name || '',
+      department: currentUser?.department || '',
+    });
+
+    setShowModal(false);
+    setEditingItem(null);
+    alert('保存成功');
   };
 
   if (!caseInfo) {
@@ -309,13 +356,23 @@ export default function ProgressTracking() {
                       const progress = getItemProgress(item);
                       const overdue = isOverdue(item.expectCompleteAt) && status !== 'completed';
 
+                      const handleItemClick = (e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        setEditingItem(item);
+                        setEditStatus(item.progressStatus || 'pending');
+                        setEditExpectDate(item.expectCompleteAt || '');
+                        setEditRemark(item.progressRemark || '');
+                        setShowModal(true);
+                      };
+
                       return (
-                        <div key={item.id} className="p-4">
+                        <div key={item.id} className="p-4 cursor-pointer hover:bg-gray-50 transition-colors group" onClick={handleItemClick}>
                           <div className="flex items-start justify-between mb-3">
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <FileText size={14} className="text-gray-400" />
                                 <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                                <Edit3 size={12} className="text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
                               </div>
                             </div>
                             <ItemStatusBadge status={status} />
@@ -362,6 +419,103 @@ export default function ProgressTracking() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {showModal && editingItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={(e) => e.stopPropagation()}>
+          <div className="bg-white rounded-lg shadow-xl w-[500px] max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-800">更新事项进度</h3>
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingItem(null);
+                }}
+                className="w-8 h-8 flex items-center justify-center rounded hover:bg-gray-100 text-gray-500 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4 overflow-y-auto">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">事项名称</label>
+                <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded text-sm text-gray-600">
+                  {editingItem.name}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">当前状态</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {statusOptions.map(option => (
+                    <label
+                      key={option.value}
+                      className={`flex items-center gap-2 px-3 py-2 border rounded cursor-pointer transition-colors ${
+                        editStatus === option.value
+                          ? 'border-primary-500 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="status"
+                        value={option.value}
+                        checked={editStatus === option.value}
+                        onChange={(e) => setEditStatus(e.target.value as ItemProgressStatus)}
+                        className="text-primary-600 focus:ring-primary-500"
+                      />
+                      <span className="text-sm">{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">预计完成时间</label>
+                <input
+                  type="date"
+                  value={editExpectDate}
+                  onChange={(e) => setEditExpectDate(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  备注
+                  <span className="text-gray-400 font-normal ml-2">{editRemark.length}/500</span>
+                </label>
+                <textarea
+                  value={editRemark}
+                  onChange={(e) => setEditRemark(e.target.value.slice(0, 500))}
+                  rows={3}
+                  placeholder="请输入备注信息..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent resize-none"
+                />
+              </div>
+            </div>
+
+            <div className="p-4 border-t border-gray-200 flex justify-end gap-2">
+              <button
+                onClick={() => {
+                  setShowModal(false);
+                  setEditingItem(null);
+                }}
+                className="px-4 py-2 text-sm text-gray-700 bg-gray-100 rounded hover:bg-gray-200 transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-4 py-2 text-sm text-white bg-primary-500 rounded hover:bg-primary-600 transition-colors flex items-center gap-2"
+              >
+                <Save size={16} />
+                保存
+              </button>
+            </div>
           </div>
         </div>
       )}

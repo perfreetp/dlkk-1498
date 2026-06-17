@@ -18,7 +18,7 @@ import {
   FileQuestion,
   Info,
 } from 'lucide-react';
-import type { CaseInfo, ExceptionStatus, ExceptionItem, FlowRecord } from '@/types';
+import type { CaseInfo, ExceptionStatus, ExceptionItem, FlowRecord, CaseStatus } from '@/types';
 
 type TabType = 'pending' | 'approved' | 'rejected';
 
@@ -38,7 +38,7 @@ const tabConfig: Record<TabType, { label: string; status: ExceptionStatus }> = {
 
 export default function ExceptionCase() {
   const { id } = useParams<{ id: string }>();
-  const { cases, updateCase, currentUser } = useCaseStore();
+  const { cases, updateCase, currentUser, addFlowRecord } = useCaseStore();
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [selectedExceptionType, setSelectedExceptionType] = useState<string>('');
@@ -131,20 +131,40 @@ export default function ExceptionCase() {
       reviewRemark: '复核通过',
     };
 
-    const newFlowRecord: FlowRecord = {
-      id: `f-${Date.now()}`,
-      status: 'processing',
+    const hasProgressItems = selectedCase.selectedItems.some(
+      (item) => item.progressStatus === 'completed' || item.progressStatus === 'processing'
+    );
+    const nextStatus: CaseStatus = hasProgressItems ? 'processing' : 'arranging';
+
+    const completedItems = selectedCase.selectedItems.filter(
+      (item) => item.progressStatus === 'completed'
+    );
+    const processingItems = selectedCase.selectedItems.filter(
+      (item) => item.progressStatus === 'processing'
+    );
+
+    const statusLabel = nextStatus === 'processing' ? '办理中' : '编排中';
+    let remark = `异常类型：${selectedExceptionType}，复核意见：${exceptionReason}，恢复至【${statusLabel}】环节`;
+    if (completedItems.length > 0) {
+      const completedNames = completedItems.map((i) => i.name).join('、');
+      remark += `，保留${completedNames}已完成状态`;
+    }
+    if (processingItems.length > 0) {
+      const processingNames = processingItems.map((i) => i.name).join('、');
+      remark += `，${processingNames}继续办理`;
+    }
+
+    addFlowRecord(selectedCase.id, {
+      status: nextStatus,
       operator: currentUser.name,
       department: currentUser.department,
       action: '异常复核通过',
-      remark: `异常类型：${selectedExceptionType}，复核意见：${exceptionReason}`,
-      timestamp: new Date().toLocaleString('zh-CN'),
-    };
+      remark,
+    });
 
     updateCase(selectedCase.id, {
       exceptions: [...selectedCase.exceptions.slice(0, -1), newException],
-      flowRecords: [...selectedCase.flowRecords, newFlowRecord],
-      status: 'processing',
+      status: nextStatus,
     });
 
     setSelectedCaseId(null);

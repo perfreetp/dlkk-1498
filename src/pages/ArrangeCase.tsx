@@ -200,7 +200,7 @@ export default function ArrangeCase() {
       '医保局': 'medical',
       '卫健委': 'health',
     };
-    const itemsWithProgress = selectedItems.map(it => {
+    const itemsWithProgress = items.map(it => {
       if (!it.selected) return it;
       const expect = new Date(now);
       expect.setDate(expect.getDate() + (it.handlingTime || 3));
