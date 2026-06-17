@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useCaseStore } from '@/store/useCaseStore';
 import { StatusBadge } from '@/components/business/StatusBadge';
 import { mockSupplementTemplates } from '@/mock/cases';
@@ -23,12 +24,14 @@ import {
 import type { CaseInfo, SupplementTemplate } from '@/types';
 
 export default function SupplementCase() {
-  const { cases, updateCase, currentUser } = useCaseStore();
+  const { cases, updateCase, currentUser, addFlowRecord } = useCaseStore();
+  const { id } = useParams<{ id: string }>();
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [supplementReason, setSupplementReason] = useState('');
   const [supplementDeadline, setSupplementDeadline] = useState('');
   const [selectedMaterials, setSelectedMaterials] = useState<string[]>([]);
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+  const [caseNotFound, setCaseNotFound] = useState(false);
 
   const supplementCases = useMemo(() => {
     return cases.filter((c) => c.status === 'supplement' || c.status === 'verifying' || c.status === 'arranging');
@@ -59,6 +62,18 @@ export default function SupplementCase() {
         .map((m) => m.id)
     );
   };
+
+  useEffect(() => {
+    if (id) {
+      const targetCase = cases.find((c) => c.id === id);
+      if (targetCase) {
+        handleSelectCase(targetCase);
+        setCaseNotFound(false);
+      } else {
+        setCaseNotFound(true);
+      }
+    }
+  }, [id, cases]);
 
   const handleMaterialToggle = (materialId: string) => {
     setSelectedMaterials((prev) =>
@@ -96,6 +111,14 @@ export default function SupplementCase() {
     updateCase(selectedCase.id, {
       status: 'supplement',
       supplements: supplementItems,
+    });
+
+    addFlowRecord(selectedCase.id, {
+      status: 'supplement',
+      operator: currentUser.name,
+      department: currentUser.department,
+      action: '发送补正通知',
+      remark: `补正原因：${supplementReason}；补正期限：${deadline}；需补正材料共${selectedMaterials.length}项`,
     });
 
     alert('补正通知已发送');
@@ -148,6 +171,15 @@ export default function SupplementCase() {
           </div>
         </div>
       </div>
+
+      {caseNotFound && (
+        <div className="mx-6 mt-4 px-4 py-3 bg-orange-50 border border-orange-200 rounded-lg flex items-center gap-2">
+          <AlertCircle className="text-orange-500 flex-shrink-0" size={18} />
+          <span className="text-sm text-orange-700">
+            未找到ID为 <span className="font-medium">{id}</span> 的办件，请从左侧列表中选择办件
+          </span>
+        </div>
+      )}
 
       <div className="flex gap-6 p-6 h-[calc(100vh-120px)]">
         <div className="w-[480px] flex-shrink-0 flex flex-col">

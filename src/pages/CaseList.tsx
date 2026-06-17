@@ -36,8 +36,12 @@ export default function CaseList() {
       navigate(`/exception/${id}`);
     } else if (status === 'completed' || status === 'archived') {
       navigate(`/archive/${id}`);
-    } else {
+    } else if (status === 'processing') {
       navigate(`/arrange/${id}`);
+    } else if (status === 'arranging') {
+      navigate(`/arrange/${id}`);
+    } else {
+      navigate(`/create/${id}`);
     }
   };
 

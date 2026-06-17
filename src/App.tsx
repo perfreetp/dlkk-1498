@@ -17,6 +17,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="create" element={<CreateCase />} />
+          <Route path="create/:id" element={<CreateCase />} />
           <Route path="arrange/:id" element={<ArrangeCase />} />
           <Route path="supplement" element={<SupplementCase />} />
           <Route path="supplement/:id" element={<SupplementCase />} />

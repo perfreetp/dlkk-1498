@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useCaseStore } from '@/store/useCaseStore';
 import { StatusBadge } from '@/components/business/StatusBadge';
 import { Timeline } from '@/components/business/Timeline';
@@ -20,9 +21,11 @@ import type { CaseInfo, ResultRecord, ResultType } from '@/types';
 type TabType = 'pending' | 'archived';
 
 export default function ArchiveCase() {
-  const { cases, currentCase, setCurrentCase, updateCase, updateCaseStatus, currentUser } = useCaseStore();
+  const { id } = useParams<{ id?: string }>();
+  const { cases, currentUser, setCurrentCase, updateCase, getCaseById, addFlowRecord } = useCaseStore();
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [selectedCase, setSelectedCase] = useState<CaseInfo | null>(null);
+  const [notFoundWarning, setNotFoundWarning] = useState<string | null>(null);
 
   const pendingCases = useMemo(() => {
     return cases.filter((c) => c.status === 'completed');
@@ -36,6 +39,26 @@ export default function ArchiveCase() {
     return activeTab === 'pending' ? pendingCases : archivedCases;
   }, [activeTab, pendingCases, archivedCases]);
 
+  useEffect(() => {
+    if (!id) return;
+
+    const targetCase = getCaseById(id);
+    if (targetCase) {
+      if (targetCase.status === 'completed') {
+        setActiveTab('pending');
+      } else if (targetCase.status === 'archived') {
+        setActiveTab('archived');
+      }
+      setSelectedCase(targetCase);
+      setCurrentCase(targetCase);
+      setNotFoundWarning(null);
+    } else {
+      setNotFoundWarning(`未找到 ID 为 ${id} 的办件`);
+      setSelectedCase(null);
+      setCurrentCase(null);
+    }
+  }, [id, cases, getCaseById, setCurrentCase]);
+
   const handleCaseClick = (caseItem: CaseInfo) => {
     setSelectedCase(caseItem);
     setCurrentCase(caseItem);
@@ -44,25 +67,21 @@ export default function ArchiveCase() {
   const handleArchive = () => {
     if (!selectedCase) return;
 
-    const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    const newFlowRecord = {
-      id: `f${Date.now()}`,
-      status: 'archived' as const,
+    addFlowRecord(selectedCase.id, {
+      status: 'archived',
       operator: currentUser.name,
       department: currentUser.department,
       action: '归档完成',
-      timestamp: now,
-    };
+    });
 
     updateCase(selectedCase.id, {
       status: 'archived',
-      flowRecords: [...selectedCase.flowRecords, newFlowRecord],
-      updatedAt: now,
     });
 
-    const updatedCase = cases.find((c) => c.id === selectedCase.id);
-    if (updatedCase) {
-      setSelectedCase({ ...updatedCase, status: 'archived' });
+    const latestCase = getCaseById(selectedCase.id);
+    if (latestCase) {
+      setSelectedCase(latestCase);
+      setCurrentCase(latestCase);
     }
 
     setActiveTab('archived');
@@ -89,16 +108,11 @@ export default function ArchiveCase() {
       },
     });
 
-    setSelectedCase((prev) => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        results: {
-          ...prev.results,
-          [resultKey]: updatedResult,
-        },
-      };
-    });
+    const latestCase = getCaseById(selectedCase.id);
+    if (latestCase) {
+      setSelectedCase(latestCase);
+      setCurrentCase(latestCase);
+    }
   };
 
   const formatDate = (dateStr: string) => {
@@ -112,6 +126,16 @@ export default function ArchiveCase() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {notFoundWarning && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-8 py-3">
+          <div className="flex items-center gap-2 text-yellow-700 text-sm">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+            </svg>
+            {notFoundWarning}
+          </div>
+        </div>
+      )}
       <div className="bg-white border-b border-gray-200 px-8 py-5">
         <div className="flex items-center justify-between">
           <div>

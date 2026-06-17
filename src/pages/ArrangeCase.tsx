@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useCaseStore } from '@/store/useCaseStore';
 import { Steps } from '@/components/business/Steps';
 import { mockScenarios, mockAvailableItems } from '@/mock/cases';
@@ -84,12 +85,57 @@ const mockMaterialsByItem: Record<string, Array<{ name: string; required: boolea
 };
 
 export default function ArrangeCase() {
-  const { currentCase, updateCase } = useCaseStore();
+  const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
+  const {
+    currentCase,
+    setCurrentCase,
+    getCaseById,
+    updateCase,
+    addFlowRecord,
+    currentUser,
+  } = useCaseStore();
+
+  const [caseLoaded, setCaseLoaded] = useState(false);
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [items, setItems] = useState<SelectedItem[]>(
-    currentCase?.selectedItems ||
-      mockAvailableItems.map((item) => ({ ...item }))
+    mockAvailableItems.map((item) => ({ ...item }))
   );
+
+  useEffect(() => {
+    if (!id) {
+      setCaseLoaded(true);
+      return;
+    }
+    const caseInfo = getCaseById(id);
+    if (caseInfo) {
+      setCurrentCase(caseInfo);
+      const initItems =
+        caseInfo.selectedItems && caseInfo.selectedItems.length > 0
+          ? caseInfo.selectedItems.map((i) => ({ ...i }))
+          : mockAvailableItems.map((i) => ({ ...i }));
+      setItems(initItems);
+
+      const selectedItemIds = initItems.filter((i) => i.selected).map((i) => i.id);
+      if (selectedItemIds.length > 0) {
+        const matched = mockScenarios.find(
+          (s) =>
+            s.itemIds.length === selectedItemIds.length &&
+            s.itemIds.every((sid) => selectedItemIds.includes(sid))
+        );
+        if (matched) {
+          setSelectedScenario(matched.id);
+        }
+      }
+    }
+    setCaseLoaded(true);
+  }, [id, getCaseById, setCurrentCase]);
+
+  useEffect(() => {
+    if (currentCase && id) {
+      updateCase(id, { selectedItems: items });
+    }
+  }, [items, currentCase, id, updateCase]);
 
   const departments = useMemo(() => {
     const deptMap = new Map<string, SelectedItem[]>();
@@ -133,7 +179,11 @@ export default function ArrangeCase() {
   };
 
   const handlePrev = () => {
-    console.log('上一步');
+    if (currentCase?.id) {
+      navigate(`/create/${currentCase.id}`);
+    } else {
+      navigate('/create');
+    }
   };
 
   const handleGenerateNotice = () => {
@@ -141,13 +191,19 @@ export default function ArrangeCase() {
   };
 
   const handleSubmit = () => {
-    if (currentCase && selectedItems.length > 0) {
-      updateCase(currentCase.id, {
-        selectedItems: selectedItems,
-        status: 'processing',
-      });
-    }
-    console.log('提交受理');
+    if (!currentCase || selectedItems.length === 0) return;
+    updateCase(currentCase.id, {
+      selectedItems: selectedItems,
+      status: 'processing',
+    });
+    addFlowRecord(currentCase.id, {
+      status: 'processing',
+      operator: currentUser.name,
+      department: currentUser.department,
+      action: '受理提交',
+    });
+    navigate('/dashboard');
+    alert('受理提交成功');
   };
 
   const getAllMaterials = () => {
@@ -167,6 +223,32 @@ export default function ArrangeCase() {
       return a.name.localeCompare(b.name);
     });
   };
+
+  if (!caseLoaded) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-gray-500">加载中...</div>
+      </div>
+    );
+  }
+
+  if (!id || !currentCase) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-gray-500 text-lg mb-4">
+            {!id ? '缺少办件ID参数' : '未找到对应办件'}
+          </div>
+          <button
+            onClick={() => navigate('/dashboard')}
+            className="btn-primary"
+          >
+            返回首页
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

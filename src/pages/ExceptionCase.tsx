@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { useCaseStore } from '@/store/useCaseStore';
 import { StatusBadge } from '@/components/business/StatusBadge';
 import { Timeline } from '@/components/business/Timeline';
@@ -36,12 +37,14 @@ const tabConfig: Record<TabType, { label: string; status: ExceptionStatus }> = {
 };
 
 export default function ExceptionCase() {
+  const { id } = useParams<{ id: string }>();
   const { cases, updateCase, currentUser } = useCaseStore();
   const [activeTab, setActiveTab] = useState<TabType>('pending');
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(null);
   const [selectedExceptionType, setSelectedExceptionType] = useState<string>('');
   const [exceptionReason, setExceptionReason] = useState<string>('');
   const [searchText, setSearchText] = useState<string>('');
+  const [caseNotFound, setCaseNotFound] = useState<string | null>(null);
 
   const exceptionCases = useMemo(() => {
     const filtered = cases.filter((c) => c.status === 'exception' && c.exceptions.length > 0);
@@ -71,6 +74,38 @@ export default function ExceptionCase() {
     if (!selectedCase || selectedCase.exceptions.length === 0) return null;
     return selectedCase.exceptions[selectedCase.exceptions.length - 1];
   }, [selectedCase]);
+
+  useEffect(() => {
+    if (!id) {
+      setCaseNotFound(null);
+      return;
+    }
+
+    const targetCase = cases.find((c) => c.id === id);
+    if (!targetCase) {
+      setCaseNotFound(id);
+      setSelectedCaseId(null);
+      return;
+    }
+
+    if (targetCase.status !== 'exception' || targetCase.exceptions.length === 0) {
+      setCaseNotFound(id);
+      setSelectedCaseId(null);
+      return;
+    }
+
+    setCaseNotFound(null);
+    const latest = targetCase.exceptions[targetCase.exceptions.length - 1];
+    const statusToTab: Record<ExceptionStatus, TabType> = {
+      pending: 'pending',
+      approved: 'approved',
+      rejected: 'rejected',
+    };
+    setActiveTab(statusToTab[latest.status] || 'pending');
+    setSelectedCaseId(targetCase.id);
+    setSelectedExceptionType(latest.type);
+    setExceptionReason(latest.reason);
+  }, [id, cases]);
 
   const handleCaseSelect = (caseItem: CaseInfo) => {
     setSelectedCaseId(caseItem.id);
@@ -213,9 +248,18 @@ export default function ExceptionCase() {
             );
           })}
         </div>
+
+        {caseNotFound && (
+          <div className="px-8 py-3 bg-yellow-50 border-b border-yellow-200 flex items-center gap-2">
+            <AlertTriangle className="text-yellow-600" size={18} />
+            <span className="text-sm text-yellow-700">
+              未找到 ID 为「{caseNotFound}」的异常办件，或该办件当前不处于异常状态。请从左侧列表中选择办件。
+            </span>
+          </div>
+        )}
       </div>
 
-      <div className="flex gap-6 p-6 pb-24" style={{ height: 'calc(100vh - 180px)' }}>
+      <div className="flex gap-6 p-6 pb-24" style={{ height: caseNotFound ? 'calc(100vh - 228px)' : 'calc(100vh - 180px)' }}>
         <div className="w-[480px] flex-shrink-0 flex flex-col">
           <div className="card p-4 mb-4">
             <div className="flex items-center gap-3">

@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useCaseStore } from '@/store/useCaseStore';
 import { Steps } from '@/components/business/Steps';
+import type { CaseInfo, SelectedItem, FlowRecord } from '@/types';
+import { mockAvailableItems } from '@/mock/cases';
 import {
   CreditCard,
   CheckCircle,
@@ -47,37 +50,69 @@ const defaultMaterials: MaterialItem[] = [
   { id: 'm6', name: '房产证/居住证明', required: false, provided: false, category: '补充材料' },
 ];
 
-export default function CreateCase() {
-  const addCase = useCaseStore((state) => state.addCase);
+function generateCaseNo() {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  const rand = Math.floor(Math.random() * 9000 + 1000);
+  return `CS${y}${m}${d}${rand}`;
+}
 
-  const [caseType, setCaseType] = useState<CaseType>('newborn');
-  const [applicant, setApplicant] = useState<ApplicantInfo>({
-    name: '',
-    idCard: '',
-    phone: '',
-    relation: '本人',
-  });
-  const [babyInfo, setBabyInfo] = useState<BabyInfo>({
-    name: '',
-    gender: 'male',
-    birthDate: '',
-    birthCertificateNo: '',
-    birthPlace: '',
-  });
-  const [parents, setParents] = useState<ParentsInfo>({
-    father: {
+function getNowStr() {
+  return new Date().toISOString().replace('T', ' ').substring(0, 19);
+}
+
+export default function CreateCase() {
+  const navigate = useNavigate();
+  const { id: editingId } = useParams();
+  const { addCase, updateCase, setCurrentCase, getCaseById, currentUser, addFlowRecord } = useCaseStore();
+
+  const existingCase = editingId ? getCaseById(editingId) : null;
+
+  const [caseType, setCaseType] = useState<CaseType>(existingCase?.type || 'newborn');
+  const [applicant, setApplicant] = useState<ApplicantInfo>(
+    existingCase?.applicant || {
       name: '',
       idCard: '',
-      idCardVerified: false,
-    },
-    mother: {
+      phone: '',
+      relation: '本人',
+    }
+  );
+  const [babyInfo, setBabyInfo] = useState<BabyInfo>(
+    existingCase?.babyInfo || {
       name: '',
-      idCard: '',
-      idCardVerified: false,
-    },
-    consistencyCheck: 'pending',
-  });
-  const [materials, setMaterials] = useState<MaterialItem[]>(defaultMaterials);
+      gender: 'male',
+      birthDate: '',
+      birthCertificateNo: '',
+      birthPlace: '',
+    }
+  );
+  const [parents, setParents] = useState<ParentsInfo>(
+    existingCase?.parents || {
+      father: {
+        name: '',
+        idCard: '',
+        idCardVerified: false,
+      },
+      mother: {
+        name: '',
+        idCard: '',
+        idCardVerified: false,
+      },
+      consistencyCheck: 'pending',
+    }
+  );
+  const [materials, setMaterials] = useState<MaterialItem[]>(existingCase?.materials || defaultMaterials);
+
+  useEffect(() => {
+    if (editingId) {
+      const c = getCaseById(editingId);
+      if (c) {
+        setCurrentCase(c);
+      }
+    }
+  }, [editingId, getCaseById, setCurrentCase]);
 
   const handleReadIdCard = (parent: 'father' | 'mother') => {
     const mockNames = { father: '张伟', mother: '李娜' };
@@ -146,16 +181,146 @@ export default function CreateCase() {
     return acc;
   }, {} as Record<string, MaterialItem[]>);
 
+  const buildCaseBase = (): Partial<CaseInfo> => {
+    const now = getNowStr();
+    const deadline = new Date();
+    deadline.setDate(deadline.getDate() + 7);
+    return {
+      type: caseType,
+      applicant,
+      babyInfo,
+      parents,
+      materials,
+      selectedItems: existingCase?.selectedItems || mockAvailableItems.map((i) => ({ ...i })),
+      supplements: existingCase?.supplements || [],
+      exceptions: existingCase?.exceptions || [],
+      flowRecords: existingCase?.flowRecords || [],
+      results: existingCase?.results || {
+        paper: { type: 'paper', registered: false },
+        electronic: { type: 'electronic', registered: false },
+      },
+      updatedAt: now,
+      deadline: deadline.toISOString().split('T')[0],
+      windowNo: currentUser.windowNo,
+      handler: currentUser.name,
+      queueNo: existingCase?.queueNo,
+    };
+  };
+
   const handlePrev = () => {
-    console.log('上一步');
+    navigate('/dashboard');
   };
 
   const handleSaveDraft = () => {
-    console.log('保存草稿');
+    const base = buildCaseBase();
+    const now = getNowStr();
+
+    if (existingCase) {
+      updateCase(existingCase.id, {
+        ...base,
+        status: 'verifying',
+      });
+      addFlowRecord(existingCase.id, {
+        status: 'verifying',
+        operator: currentUser.name,
+        department: currentUser.department,
+        action: '保存草稿',
+      });
+      setCurrentCase({ ...existingCase, ...base, status: 'verifying' } as CaseInfo);
+      alert('草稿已保存');
+    } else {
+      const caseId = `case-${Date.now()}`;
+      const caseNo = generateCaseNo();
+      const newCase: CaseInfo = {
+        id: caseId,
+        caseNo,
+        status: 'verifying',
+        ...base,
+        createdAt: now,
+        updatedAt: now,
+        flowRecords: [
+          {
+            id: `f-${Date.now()}`,
+            status: 'verifying',
+            operator: currentUser.name,
+            department: currentUser.department,
+            action: '新建草稿',
+            timestamp: now,
+          },
+        ],
+      } as CaseInfo;
+      addCase(newCase);
+      setCurrentCase(newCase);
+      alert('草稿已保存');
+    }
   };
 
   const handleNext = () => {
-    console.log('下一步');
+    if (!applicant.name || !babyInfo.name) {
+      alert('请至少填写申请人姓名和新生儿姓名');
+      return;
+    }
+    const base = buildCaseBase();
+    const now = getNowStr();
+
+    let targetId: string;
+    let targetNo: string;
+
+    if (existingCase) {
+      targetId = existingCase.id;
+      targetNo = existingCase.caseNo;
+      updateCase(existingCase.id, {
+        ...base,
+        status: 'arranging',
+      });
+      addFlowRecord(existingCase.id, {
+        status: 'arranging',
+        operator: currentUser.name,
+        department: currentUser.department,
+        action: '信息核验通过，进入联办编排',
+      });
+    } else {
+      targetId = `case-${Date.now()}`;
+      targetNo = generateCaseNo();
+      const newCase: CaseInfo = {
+        id: targetId,
+        caseNo: targetNo,
+        status: 'arranging',
+        ...base,
+        createdAt: now,
+        updatedAt: now,
+        flowRecords: [
+          {
+            id: `f-${Date.now()}`,
+            status: 'pending',
+            operator: '叫号系统',
+            department: '政务中心',
+            action: '叫号',
+            timestamp: now,
+          },
+          {
+            id: `f-${Date.now() + 1}`,
+            status: 'verifying',
+            operator: currentUser.name,
+            department: currentUser.department,
+            action: '信息核验',
+            timestamp: now,
+          },
+          {
+            id: `f-${Date.now() + 2}`,
+            status: 'arranging',
+            operator: currentUser.name,
+            department: currentUser.department,
+            action: '进入联办编排',
+            timestamp: now,
+          },
+        ],
+      } as CaseInfo;
+      addCase(newCase);
+      setCurrentCase(newCase);
+    }
+
+    navigate(`/arrange/${targetId}`);
   };
 
   const consistencyStatus = getConsistencyStatus(parents.consistencyCheck);
