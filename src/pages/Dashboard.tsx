@@ -1,10 +1,12 @@
 import { FileText, Clock, AlertTriangle, XCircle, ChevronRight, Users } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
+import { useNavigate } from 'react-router-dom';
 import { StatCard } from '@/components/business/StatCard';
 import { StatusBadge } from '@/components/business/StatusBadge';
 import { useCaseStore } from '@/store/useCaseStore';
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   const { queue, cases, dailyStats, exceptionReasons, getTodayStats, callNextNumber } = useCaseStore();
 
   const todayStats = getTodayStats();
@@ -135,9 +137,30 @@ export default function Dashboard() {
               <tbody>
                 {todayCases.map((item) => (
                   <tr key={item.id} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
-                    <td className="py-3 px-3 text-primary-600 font-medium">{item.caseNo}</td>
-                    <td className="py-3 px-3 text-gray-700">{item.applicant.name}</td>
-                    <td className="py-3 px-3 text-gray-700">{item.babyInfo.name}</td>
+                    <td className="py-3 px-3">
+                      <span
+                        className="text-primary-600 font-medium hover:underline cursor-pointer"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
+                        {item.caseNo}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span
+                        className="text-primary-600 hover:underline cursor-pointer"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
+                        {item.applicant.name}
+                      </span>
+                    </td>
+                    <td className="py-3 px-3">
+                      <span
+                        className="text-primary-600 hover:underline cursor-pointer"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
+                        {item.babyInfo.name}
+                      </span>
+                    </td>
                     <td className="py-3 px-3">
                       <StatusBadge status={item.status} />
                     </td>
@@ -148,7 +171,10 @@ export default function Dashboard() {
                       {formatTime(item.createdAt)}
                     </td>
                     <td className="py-3 px-3">
-                      <button className="text-primary-600 text-xs hover:text-primary-700 font-medium">
+                      <button
+                        className="text-primary-600 text-xs hover:underline cursor-pointer font-medium"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
                         详情
                       </button>
                     </td>

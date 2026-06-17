@@ -214,8 +214,10 @@ export default function CreateCase() {
   const handleSaveDraft = () => {
     const base = buildCaseBase();
     const now = getNowStr();
+    let targetId: string;
 
     if (existingCase) {
+      targetId = existingCase.id;
       updateCase(existingCase.id, {
         ...base,
         status: 'verifying',
@@ -226,13 +228,13 @@ export default function CreateCase() {
         department: currentUser.department,
         action: '保存草稿',
       });
-      setCurrentCase({ ...existingCase, ...base, status: 'verifying' } as CaseInfo);
-      alert('草稿已保存');
+      const updated = { ...existingCase, ...base, status: 'verifying' } as CaseInfo;
+      setCurrentCase(updated);
     } else {
-      const caseId = `case-${Date.now()}`;
+      targetId = `case-${Date.now()}`;
       const caseNo = generateCaseNo();
       const newCase: CaseInfo = {
-        id: caseId,
+        id: targetId,
         caseNo,
         status: 'verifying',
         ...base,
@@ -251,8 +253,10 @@ export default function CreateCase() {
       } as CaseInfo;
       addCase(newCase);
       setCurrentCase(newCase);
-      alert('草稿已保存');
     }
+
+    alert(`草稿已保存，联办单号：${existingCase?.caseNo || (targetId ? generateCaseNo() : '')}`);
+    navigate(`/create/${targetId}`, { replace: true });
   };
 
   const handleNext = () => {

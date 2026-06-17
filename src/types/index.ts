@@ -4,6 +4,8 @@ export type ConsistencyCheckResult = 'passed' | 'failed' | 'pending';
 export type SupplementStatus = 'pending' | 'replied' | 'passed';
 export type ExceptionStatus = 'pending' | 'approved' | 'rejected';
 export type ResultType = 'paper' | 'electronic';
+export type ItemProgressStatus = 'pending' | 'processing' | 'completed' | 'overdue' | 'exception';
+export type DepartmentCode = 'police' | 'hrss' | 'medical' | 'health' | 'other';
 
 export interface ApplicantInfo {
   name: string;
@@ -46,11 +48,18 @@ export interface SelectedItem {
   id: string;
   name: string;
   department: string;
+  departmentCode?: DepartmentCode;
   type: string;
   selected: boolean;
   scenario: string;
   handlingTime: number;
   fee?: number;
+  progressStatus?: ItemProgressStatus;
+  acceptAt?: string;
+  expectCompleteAt?: string;
+  completedAt?: string;
+  handler?: string;
+  progressRemark?: string;
 }
 
 export interface SupplementItem {

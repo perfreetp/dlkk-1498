@@ -192,8 +192,31 @@ export default function ArrangeCase() {
 
   const handleSubmit = () => {
     if (!currentCase || selectedItems.length === 0) return;
+    const now = new Date();
+    const nowStr = now.toISOString().replace('T', ' ').substring(0, 19);
+    const deptMap: Record<string, any> = {
+      '公安局': 'police',
+      '人社局': 'hrss',
+      '医保局': 'medical',
+      '卫健委': 'health',
+    };
+    const itemsWithProgress = selectedItems.map(it => {
+      if (!it.selected) return it;
+      const expect = new Date(now);
+      expect.setDate(expect.getDate() + (it.handlingTime || 3));
+      return {
+        ...it,
+        departmentCode: deptMap[it.department] || 'other',
+        progressStatus: it.progressStatus || 'pending' as const,
+        acceptAt: it.acceptAt || nowStr,
+        expectCompleteAt: it.expectCompleteAt || expect.toISOString().split('T')[0],
+        completedAt: it.completedAt,
+        handler: it.handler || currentUser.name,
+        progressRemark: it.progressRemark || '已受理，待部门处理',
+      };
+    });
     updateCase(currentCase.id, {
-      selectedItems: selectedItems,
+      selectedItems: itemsWithProgress,
       status: 'processing',
     });
     addFlowRecord(currentCase.id, {
@@ -201,9 +224,10 @@ export default function ArrangeCase() {
       operator: currentUser.name,
       department: currentUser.department,
       action: '受理提交',
+      remark: `共 ${selectedItems.filter(i => i.selected).length} 个事项已进入联办流程`,
     });
-    navigate('/dashboard');
     alert('受理提交成功');
+    navigate(`/progress/${currentCase.id}`);
   };
 
   const getAllMaterials = () => {

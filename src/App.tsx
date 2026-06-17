@@ -8,6 +8,8 @@ import ExceptionCase from "@/pages/ExceptionCase";
 import ArchiveCase from "@/pages/ArchiveCase";
 import Statistics from "@/pages/Statistics";
 import CaseList from "@/pages/CaseList";
+import ProgressTracking from "@/pages/ProgressTracking";
+import CaseDetail from "@/pages/CaseDetail";
 
 export default function App() {
   return (
@@ -26,7 +28,9 @@ export default function App() {
           <Route path="archive" element={<ArchiveCase />} />
           <Route path="archive/:id" element={<ArchiveCase />} />
           <Route path="cases/:type" element={<CaseList />} />
+          <Route path="progress/:id" element={<ProgressTracking />} />
           <Route path="statistics" element={<Statistics />} />
+          <Route path="case/:id" element={<CaseDetail />} />
         </Route>
       </Routes>
     </Router>

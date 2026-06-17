@@ -98,10 +98,29 @@ export default function CaseList() {
                   <tr key={item.id} className="hover:bg-gray-50 cursor-pointer"
                       onClick={() => handleViewDetail(item.id, item.status)}>
                     <td className="px-4 py-3">
-                      <span className="text-sm font-medium text-primary-600">{item.caseNo}</span>
+                      <span
+                        className="text-sm font-medium text-primary-600 hover:underline cursor-pointer"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
+                        {item.caseNo}
+                      </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{item.applicant.name}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{item.babyInfo.name}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className="text-sm text-primary-600 hover:underline cursor-pointer"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
+                        {item.applicant.name}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className="text-sm text-primary-600 hover:underline cursor-pointer"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
+                        {item.babyInfo.name}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
                         {item.selectedItems.filter(s => s.selected).slice(0, 2).map(s => (
@@ -121,8 +140,10 @@ export default function CaseList() {
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-500">{item.createdAt}</td>
                     <td className="px-4 py-3">
-                      <button className="text-primary-600 text-sm hover:text-primary-700 flex items-center gap-1"
-                              onClick={e => { e.stopPropagation(); handleViewDetail(item.id, item.status); }}>
+                      <button
+                        className="text-primary-600 text-sm hover:underline cursor-pointer flex items-center gap-1"
+                        onClick={e => { e.stopPropagation(); navigate(`/case/${item.id}`); }}
+                      >
                         <Eye size={14} />
                         详情
                         <ChevronRight size={14} />
